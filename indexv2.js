@@ -100,7 +100,7 @@ async function placeOrder(type, price, amount) {
     );
 
     if (data.status === "failed") {
-        console.log("ORDER FAIL:", data.message);
+        console.log("ORDER FAIL:", data);
         sendTelegram(`ORDER FAIL: ${data.message}`)
 
         return false;
