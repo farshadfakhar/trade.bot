@@ -281,5 +281,5 @@ console.log("🚀 Farshad Trend-Reversal Bot Started...");
 sendTelegram("🚀 Farshad Trend-Reversal Bot Started...")
 
 setInterval(strategyLoop, 6000);
-setInterval(getCurrentWallet, 1000 * 60)
+setInterval(getCurrentWallet, 1000 * 60 * 60)
 getCurrentWallet()
