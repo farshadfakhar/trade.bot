@@ -187,7 +187,7 @@ async function strategyLoop() {
     // --------------------------------------------------------
     // EMERGENCY SELL BASED ON 10% DROP FROM lastPriceStored
     // --------------------------------------------------------
-    if (lastPriceStored && price <= lastPriceStored * 0.95) {
+    if (lastPriceStored && price <= lastPriceStored * 0.90) {
 
         console.log("⚠️ PRICE DROPPED MORE THAN 10% FROM lastPriceStored → EMERGENCY SELL");
         sendTelegram("⚠️ PRICE DROPPED >10% FROM lastPrice → EMERGENCY SELL");
