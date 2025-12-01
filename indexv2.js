@@ -17,10 +17,14 @@ let sessionToken = process.env.NOBI_TOKEN;
 
 const PRICE_FILE = "./lastPrice.json";
 
+// ------------------ LOAD / SAVE lastPrice ------------------
+
+let lastPriceStored = null;
+
 function saveState() {
     fs.writeFileSync(
         PRICE_FILE,
-        JSON.stringify({ STATE, buys, last3 }),
+        JSON.stringify({ STATE, buys, last3, lastPriceStored }),
         "utf8"
     );
 }
@@ -33,6 +37,7 @@ function loadState() {
         STATE = d.STATE || "WAIT";
         buys = d.buys || [];
         last3 = d.last3 || [];
+        lastPriceStored = d.lastPriceStored || null;
     } catch { }
 }
 
@@ -109,6 +114,13 @@ async function placeOrder(type, price, amount) {
     }
 
     writeTradeLog(type, price, amount);
+
+    // -------------------------
+    // UPDATE lastPriceStored
+    // -------------------------
+    lastPriceStored = price;
+    saveState();
+
     sendTelegram(`ORDER OK: ${type} ${price} ${amount}`)
 
     return true;
@@ -127,7 +139,7 @@ function getAverageBuy() {
 }
 
 /* ============================================
-    EMERGENCY SELL: SELL ALL USDT
+    BALANCE & EMERGENCY SELL
 ============================================ */
 
 // GET BALANCE
@@ -170,26 +182,26 @@ async function strategyLoop() {
     last3.push(price);
     if (last3.length > 3) last3.shift();
 
-    console.log("\nSTATE:", STATE, "| PRICE:", price);
+    console.log("\nSTATE:", STATE, "| PRICE:", price, "| lastPriceStored:", lastPriceStored);
 
-    // ----------------------------------------------
-    // EMERGENCY SELL CONDITION
-    // سه کندل ریزشی پشت هم
-    // ----------------------------------------------
-    if (
-        last3.length === 3 &&
-        last3[0] > last3[1] &&
-        last3[1] > last3[2]
-    ) {
-        console.log("⚠️ HARD DOWN TREND → SELLING ALL USDT");
-        sendTelegram("⚠️ HARD DOWN TREND → SELLING ALL USDT");
+    // --------------------------------------------------------
+    // EMERGENCY SELL BASED ON 10% DROP FROM lastPriceStored
+    // --------------------------------------------------------
+    if (lastPriceStored && price <= lastPriceStored * 0.90) {
+
+        console.log("⚠️ PRICE DROPPED MORE THAN 10% FROM lastPriceStored → EMERGENCY SELL");
+        sendTelegram("⚠️ PRICE DROPPED >10% FROM lastPrice → EMERGENCY SELL");
 
         await emergencySell();
 
         STATE = "WAIT";
         buys = [];
         last3 = [];
+
+        // IMPORTANT: Update last stored price after selling
+        lastPriceStored = price;
         saveState();
+
         return;
     }
 
@@ -260,6 +272,7 @@ async function strategyLoop() {
                 STATE = "WAIT";
                 buys = [];
                 last3 = [];
+                lastPriceStored = price;
                 saveState();
             }
         }
@@ -268,12 +281,11 @@ async function strategyLoop() {
     }
 }
 
-async function getCurrentWallet(){
+async function getCurrentWallet() {
     const usdt = await getBalance("usdt");
     const rls = await getBalance("rls");
     console.log(`WALLET   USDT: ${usdt} | RIAL: ${rls}`)
     sendTelegram(`WALLET   USDT: ${usdt} | RIAL: ${rls}`)
-
 }
 
 // START
