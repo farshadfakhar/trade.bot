@@ -1,20 +1,16 @@
 const axios = require("axios");
 const fs = require("fs");
-const {sendTelegram} = require("./telegram.js")
+const { sendTelegram } = require("./telegram.js")
 require("dotenv").config();
 
 const SYMBOL = "USDTIRT";
 
-const TRADE_AMOUNT = "1"; 
+const TRADE_AMOUNT = "2";
 const TAKE_PROFIT_PERCENT = 1;
 
 // /////// STATE MACHINE ///////
-let STATE = "WAIT";  // WAIT, DOWN, REVERSAL, HOLD
-
-// سه قیمت آخر مخصوص تشخیص روند
+let STATE = "WAIT";
 let last3 = [];
-
-// ذخیره خریدها برای محاسبه میانگین
 let buys = [];
 
 let sessionToken = process.env.NOBI_TOKEN;
@@ -30,13 +26,14 @@ function saveState() {
 }
 
 function loadState() {
+
     if (!fs.existsSync(PRICE_FILE)) return;
     try {
         const d = JSON.parse(fs.readFileSync(PRICE_FILE, "utf8"));
         STATE = d.STATE || "WAIT";
         buys = d.buys || [];
         last3 = d.last3 || [];
-    } catch {}
+    } catch { }
 }
 
 loadState();
@@ -79,7 +76,12 @@ async function getPrice() {
 
     const ask = parseFloat(resp.data.asks[0][0]);
     const bid = parseFloat(resp.data.bids[0][0]);
-    return (ask + bid) / 2;
+
+    return {
+        mid: (ask + bid) / 2,
+        ask,
+        bid
+    };
 }
 
 // PLACE ORDER
@@ -101,7 +103,7 @@ async function placeOrder(type, price, amount) {
 
     if (data.status === "failed") {
         console.log("ORDER FAIL:", data);
-        sendTelegram(`ORDER FAIL: ${data.message}`)
+        sendTelegram(`ORDER FAIL: ${data.message} ${data.code}`)
 
         return false;
     }
@@ -124,19 +126,74 @@ function getAverageBuy() {
     return sumCost / sumAmount;
 }
 
-// STRATEGY LOOP
-async function strategyLoop() {
-    const price = await getPrice();
+/* ============================================
+    EMERGENCY SELL: SELL ALL USDT
+============================================ */
 
-    // آخرین سه قیمت برای تشخیص روند
+// GET BALANCE
+async function getBalance(cur) {
+    const data = await nobiPost(
+        "https://apiv2.nobitex.ir/users/wallets/balance",
+        { currency: cur }
+    );
+
+    if (data.status !== "ok") return 0;
+    return parseFloat(data.balance);
+}
+
+// SELL ALL USDT
+async function emergencySell() {
+    try {
+        const usdt = await getBalance("usdt");
+        if (usdt <= 0) return;
+
+        const p = await getPrice();
+        const price = p.bid;
+
+        console.log("⚠️ EMERGENCY SELL →", usdt, "@", price);
+        sendTelegram(`⚠️ EMERGENCY SELL TRIGGERED → ${usdt} @ ${price}`);
+
+        await placeOrder("sell", price, usdt);
+
+    } catch (e) {
+        console.log("EMERGENCY SELL ERROR:", e);
+    }
+}
+
+/* ============================================
+    STRATEGY LOOP
+============================================ */
+
+async function strategyLoop() {
+    const { mid: price } = await getPrice();
+
     last3.push(price);
     if (last3.length > 3) last3.shift();
 
     console.log("\nSTATE:", STATE, "| PRICE:", price);
 
-    // -------------------------------------------------
-    // 1) حالت WAIT: منتظر سه قیمت اولیه
-    // -------------------------------------------------
+    // ----------------------------------------------
+    // EMERGENCY SELL CONDITION
+    // سه کندل ریزشی پشت هم
+    // ----------------------------------------------
+    if (
+        last3.length === 3 &&
+        last3[0] > last3[1] &&
+        last3[1] > last3[2]
+    ) {
+        console.log("⚠️ HARD DOWN TREND → SELLING ALL USDT");
+        sendTelegram("⚠️ HARD DOWN TREND → SELLING ALL USDT");
+
+        await emergencySell();
+
+        STATE = "WAIT";
+        buys = [];
+        last3 = [];
+        saveState();
+        return;
+    }
+
+    // ------------------- WAIT -------------------
     if (STATE === "WAIT") {
         if (last3.length === 3) {
             STATE = "DOWN";
@@ -145,10 +202,7 @@ async function strategyLoop() {
         return;
     }
 
-    // -------------------------------------------------
-    // 2) تشخیص ریزش → DOWN TREND
-    // last3[0] > last3[1] > last3[2]
-    // -------------------------------------------------
+    // ------------------- DOWN -------------------
     if (STATE === "DOWN") {
         if (
             last3.length === 3 &&
@@ -157,7 +211,6 @@ async function strategyLoop() {
         ) {
             console.log("📉 MARKET IN DOWN TREND");
             sendTelegram("MARKET IN DOWN TREND")
-            // ادامه بده تا برگشت شکل بگیرد
             return;
         } else {
             console.log("↗️ POSSIBLE REVERSAL, waiting confirmation...");
@@ -169,21 +222,15 @@ async function strategyLoop() {
         }
     }
 
-    // -------------------------------------------------
-    // 3) حالت REVERSAL → دنبال مدل A و B
-    // A) کندل صعودی: last3[2] > last3[1]
-    // B) higher low: price > last low
-    // -------------------------------------------------
+    // ------------------- REVERSAL -------------------
     if (STATE === "REVERSAL") {
         if (last3[2] > last3[1]) {
             console.log("🔵 UP CANDLE → Checking Higher-Low...");
             sendTelegram("UP CANDLE → Checking Higher-Low...")
 
-            // اگر higher-low و higher-high تأیید شد → BUY
             if (last3[1] > last3[0]) {
                 console.log("🟢 REVERSAL CONFIRMED → BUYING");
                 sendTelegram("REVERSAL CONFIRMED → BUYING")
-
 
                 const ok = await placeOrder("buy", price, TRADE_AMOUNT);
                 if (ok) {
@@ -197,9 +244,7 @@ async function strategyLoop() {
         return;
     }
 
-    // -------------------------------------------------
-    // 4) HOLD → منتظر SELL
-    // -------------------------------------------------
+    // ------------------- HOLD -------------------
     if (STATE === "HOLD") {
         const avg = getAverageBuy();
         const tp = avg * (1 + TAKE_PROFIT_PERCENT / 100);
@@ -209,7 +254,6 @@ async function strategyLoop() {
         if (price >= tp) {
             console.log("🔴 TAKE PROFIT TRIGGERED → SELL");
             sendTelegram("TAKE PROFIT TRIGGERED → SELL")
-
 
             const ok = await placeOrder("sell", price, TRADE_AMOUNT);
             if (ok) {
@@ -224,8 +268,18 @@ async function strategyLoop() {
     }
 }
 
+async function getCurrentWallet(){
+    const usdt = await getBalance("usdt");
+    const rls = await getBalance("rls");
+    console.log(`WALLET   USDT: ${usdt} | RIAL: ${rls}`)
+    sendTelegram(`WALLET   USDT: ${usdt} | RIAL: ${rls}`)
+
+}
+
 // START
 console.log("🚀 Farshad Trend-Reversal Bot Started...");
 sendTelegram("🚀 Farshad Trend-Reversal Bot Started...")
 
 setInterval(strategyLoop, 6000);
+setInterval(getCurrentWallet, 1000 * 60)
+getCurrentWallet()
