@@ -5,8 +5,8 @@ require("dotenv").config();
 
 const SYMBOL = "USDTIRT";
 
-const TRADE_AMOUNT = "1"; 
-const TAKE_PROFIT_PERCENT = 0.3;
+const TRADE_AMOUNT = "2"; 
+const TAKE_PROFIT_PERCENT = 1;
 
 // /////// STATE MACHINE ///////
 let STATE = "WAIT";  // WAIT, DOWN, REVERSAL, HOLD
