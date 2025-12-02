@@ -117,7 +117,7 @@ async function logicLoop() {
     let data = loadState();
 
     // Fetch candles (5 minutes)
-    const candles = await fetchCandles(SYMBOL, 60, 60);
+    const candles = await fetchCandles(SYMBOL, 5, 330);
     
     // Analyze market condition
     const analysis = analyzeMarket(candles, data.state);

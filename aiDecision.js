@@ -30,7 +30,7 @@ function analyzeMarket(candles, currentState) {
     // Trend detection
     const trendDown = lastE20 < lastE50;
     const trendUp   = lastE20 > lastE50;
-    console.log('UP:', trendUp, 'DOWN:', trendDown, '----', lastE20, lastE50)
+    console.log('UP:', trendUp, 'DOWN:', trendDown, '----', lastE20, '<' , lastE50)
 
     // Momentum (close > previous close)
     const momentumPositive = closes[last] > closes[last - 1];
