@@ -16,7 +16,7 @@ function analyzeMarket(candles, currentState) {
     if (!candles || candles.length < 30) {
         return { signal: 'hold', nextState: currentState };
     }
-
+    
     const closes = candles.map(c => Number(c[4]));
     const last = closes.length - 1;
 

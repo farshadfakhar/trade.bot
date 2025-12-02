@@ -11,6 +11,7 @@ async function fetchCandles(symbol = 'BTCUSDT', resolution = '60', limit = 50) {
         const params = {
             symbol,
             resolution: String(resolution),  // مثل "5"
+            from: to - 3600,
             to,
             countback: limit                 // تعداد کندل
         };
