@@ -144,13 +144,20 @@ async function logicLoop() {
     console.log(`State=${data.state} → Next=${analysis.nextState} | Signal=${analysis.signal} | BESTBUY: ${bestBuy} | BEST SELL: ${bestSell}`);
 
     // BUY
-    if (analysis.signal === 'buy') {
-        const place = await placeOrder('buy', bestSell);
-        if (place) {
-            data.lastPrice = bestSell;
-            data.buys += 1;
-            sendTelegram(`Buy executed at price: ${bestSell}`);
-            console.log(`Buy executed at price: ${bestSell}`);
+    if (data.lastPrice > 0) {
+        console.log("Position already open. Skipping BUY until we SELL.");
+        sendTelegram(`Position already open. Skipping BUY until we SELL.`);
+
+        // اینجا فقط SELL چک می‌شود
+    } else {
+        if (analysis.signal === 'buy') {
+            const place = await placeOrder('buy', bestSell);
+            if (place) {
+                data.lastPrice = bestSell;
+                data.buys += 1;
+                sendTelegram(`Buy executed at price: ${bestSell}`);
+                console.log(`Buy executed at price: ${bestSell}`);
+            }
         }
     }
 
