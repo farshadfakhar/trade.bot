@@ -57,6 +57,15 @@ async function nobiPost(url, data) {
 
 async function placeOrder(type, price) {
     let amount = Math.floor(TRADE_AMOUNT / price * 1e6) / 1e6;
+    sendTelegram(`ORDERING: ${type} | ${price} | ${json.stringify({
+        type,
+        execution: "limit",
+        price: Number(price),
+        amount: Number(amount),
+        srcCurrency: "btc",
+        dstCurrency: "usdt",
+        clientOrderId: String(Date.now())
+    })}`)
     console.log({
         type,
         execution: "limit",
@@ -81,7 +90,7 @@ async function placeOrder(type, price) {
         payload
     );
 
-    
+
 
     if (data.status === "failed") {
         console.log("ORDER FAIL:", data);
@@ -118,7 +127,7 @@ async function logicLoop() {
 
     // Fetch candles (5 minutes)
     const candles = await fetchCandles(SYMBOL, 5, 50);
-    
+
     // Analyze market condition
     const analysis = analyzeMarket(candles, data.state);
     // Orderbook
