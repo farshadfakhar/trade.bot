@@ -135,7 +135,7 @@ async function logicLoop() {
     const candles = await fetchCandles(SYMBOL, 5, 50);
 
     // Analyze market condition
-    const analysis = analyzeMarket(candles, data.state);
+    const analysis = analyzeMarket(candles, data.state, data);
     // Orderbook
     const orderBook = await getOrderBook();
     const bestBuy = Number(orderBook.bids[0][0]);

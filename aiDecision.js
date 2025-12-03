@@ -1,5 +1,5 @@
 /**
- * aiDecision.js — FULL LOGS + SOFT‑CROSS BUY
+ * aiDecision.js — FULL LOGS + SOFT‑CROSS BUY + FORCED HOLD WHEN POSITION OPEN
  * Compatible with Nobitex candle format: [timestamp, open, high, low, close]
  */
 
@@ -15,13 +15,13 @@ function ema(data, period) {
     return result;
 }
 
-function analyzeMarket(candles, currentState) {
+function analyzeMarket(candles, currentState, state) {
     if (!candles || candles.length < 30) {
         console.log("❗ Candle data insufficient (<30). Holding...");
         return { signal: "hold", nextState: currentState };
     }
 
-    // Nobitex array format → [t, open, high, low, close]
+    // Nobitex format: [t, open, high, low, close]
     const closes = candles.map(c => Number(c[4]));
     const last = closes.length - 1;
 
@@ -35,7 +35,7 @@ function analyzeMarket(candles, currentState) {
     const price = closes[last];
     const prevPrice = closes[last - 1];
 
-    // Momentum / Slope
+    // Momentum / Slopes
     const ema20SlopeUp = e20 > prevE20;
     const ema20SlopeDown = e20 < prevE20;
 
@@ -46,7 +46,7 @@ function analyzeMarket(candles, currentState) {
     const trendUp = e20 > e50;
     const trendDown = e20 < e50;
 
-    // ⭐ Soft-Cross Condition (مهم!)
+    // Soft-cross BUY filter
     const softCross = e20 >= e50 * 0.995;
 
     console.log("\n----------------------------------");
@@ -60,10 +60,40 @@ function analyzeMarket(candles, currentState) {
     console.log("SoftCross (E20 >= E50*0.995):", softCross);
     console.log("Trend Up:", trendUp, "| Trend Down:", trendDown);
     console.log("Current State:", currentState);
+    console.log("Buys in state:", state?.buys);
     console.log("----------------------------------");
 
-    // ----------------------- FSM LOGIC -----------------------
+    // --------------------------------------------------------
+    // 🔒   FORCE HOLD MODE — When a position is open
+    // --------------------------------------------------------
+    if (state && state.buys && state.buys > 0) {
+        console.log("🔒 Active BUY detected (state.buys > 0)");
+        console.log("➡ Forcing HOLD mode until SELL happens...");
 
+        console.log("\n📌 Forced SELL Conditions:");
+        console.log("1) Trend Down (E20 < E50):", trendDown);
+        console.log("2) Price < EMA20:", priceBelowE20);
+        console.log("3) EMA20 Slope Down:", ema20SlopeDown);
+
+        let sellScore = 0;
+        if (trendDown) sellScore++;
+        if (priceBelowE20) sellScore++;
+        if (ema20SlopeDown) sellScore++;
+
+        console.log(`🔥 Forced SELL Progress: ${sellScore}/3`);
+
+        if (sellScore >= 2) {
+            console.log("🔻 SELL SIGNAL from forced HOLD mode");
+            return { signal: "sell", nextState: "WAIT" };
+        }
+
+        console.log("⏳ No SELL yet → staying HOLD");
+        return { signal: "hold", nextState: "HOLD" };
+    }
+
+    // --------------------------------------------------------
+    // NORMAL FSM — Only when no open position
+    // --------------------------------------------------------
     switch (currentState) {
 
         case "WAIT":
@@ -84,7 +114,7 @@ function analyzeMarket(candles, currentState) {
             console.log("\n📌 BUY CONDITIONS:");
             console.log("1) EMA20 Slope Up:", ema20SlopeUp);
             console.log("2) Price > EMA20:", priceAboveE20);
-            console.log("3) Soft-Cross (E20 >= E50*0.995):", softCross);
+            console.log("3) Soft‑Cross (E20 >= E50*0.995):", softCross);
 
             let buyScore = 0;
             if (ema20SlopeUp) buyScore++;
@@ -98,36 +128,36 @@ function analyzeMarket(candles, currentState) {
                 return { signal: "buy", nextState: "HOLD" };
             }
 
-            console.log("⏳ Conditions incomplete. Staying DOWN.");
+            console.log("⏳ Conditions incomplete → stay DOWN.");
             return { signal: "hold", nextState: "DOWN" };
 
 
         case "HOLD":
-            console.log("🟢 STATE: HOLD — Position open. Checking SELL...");
+            console.log("🟢 STATE: HOLD — Checking SELL...");
 
             console.log("\n📌 SELL CONDITIONS:");
-            console.log("1) Trend Down (E20 < E50):", trendDown);
+            console.log("1) Trend Down:", trendDown);
             console.log("2) Price < EMA20:", priceBelowE20);
             console.log("3) EMA20 Slope Down:", ema20SlopeDown);
 
-            let sellScore = 0;
-            if (trendDown) sellScore++;
-            if (priceBelowE20) sellScore++;
-            if (ema20SlopeDown) sellScore++;
+            let sellScore2 = 0;
+            if (trendDown) sellScore2++;
+            if (priceBelowE20) sellScore2++;
+            if (ema20SlopeDown) sellScore2++;
 
-            console.log(`🔥 SELL Progress: ${sellScore}/3`);
+            console.log(`🔥 SELL Progress: ${sellScore2}/3`);
 
-            if (sellScore >= 2) {
-                console.log("🔻 SELL SIGNAL (≥2/3 conditions matched)");
+            if (sellScore2 >= 2) {
+                console.log("🔻 SELL SIGNAL (≥2 / 3)");
                 return { signal: "sell", nextState: "WAIT" };
             }
 
-            console.log("⏳ HOLDING. No SELL triggered.");
+            console.log("⏳ HOLDING. No SELL yet.");
             return { signal: "hold", nextState: "HOLD" };
 
 
         default:
-            console.log("⚪ Unknown state → Resetting to WAIT");
+            console.log("⚪ Unknown state → Reset to WAIT");
             return { signal: "hold", nextState: "WAIT" };
     }
 }
