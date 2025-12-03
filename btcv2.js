@@ -199,6 +199,7 @@ async function logicLoop() {
         } else {
             console.log(`Sell signal detected, but price < target. Now=${bestBuy}, Target=${target}`);
             sendTelegram(`Sell signal detected, but price < target`);
+            data.state = 'HOLD'
         }
     }
 
