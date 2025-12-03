@@ -9,7 +9,7 @@ const { sendTelegram } = require('./telegram.js');
 // Load last state
 const stateFilePath = './lastPrice.json';
 
-const TRADE_AMOUNT = 5;
+const TRADE_AMOUNT = 7;
 const SYMBOL = 'BTCUSDT';
 const SESSION = process.env.NOBI_TOKEN;
 
@@ -26,6 +26,7 @@ function loadState() {
 }
 
 function saveState(data) {
+    console.log('-----DATA----', data)
     fs.writeFileSync(stateFilePath, JSON.stringify(data, null, 2));
 }
 
@@ -55,26 +56,30 @@ async function nobiPost(url, data) {
     }
 }
 
-async function placeOrder(type, price) {
-    let amount = Math.floor(TRADE_AMOUNT / price * 1e6) / 1e6;
-    sendTelegram(`ORDERING: ${type} | ${price} | ${json.stringify({
-        type,
-        execution: "limit",
-        price: Number(price),
-        amount: Number(amount),
-        srcCurrency: "btc",
-        dstCurrency: "usdt",
-        clientOrderId: String(Date.now())
-    })}`)
-    console.log({
-        type,
-        execution: "limit",
-        price: Number(price),
-        amount: Number(amount),
-        srcCurrency: "btc",
-        dstCurrency: "usdt",
-        clientOrderId: String(Date.now())
-    })
+// LOG
+function writeTradeLog(type, price, amount) {
+    const line = `${new Date().toISOString()} | ${type.toUpperCase()} | price=${price} | amount=${amount}\n`;
+    fs.appendFileSync("./trade.log", line, "utf8");
+}
+
+async function placeOrder(type, price, customAmount = null) {
+    // اگر customAmount نداشت یعنی BUY هست
+    let amount;
+
+    if (customAmount !== null) {
+        amount = customAmount;
+    } else {
+        // BUY مقدار دلار ثابت
+        amount = Math.floor(TRADE_AMOUNT / price * 1e6) / 1e6;
+    }
+
+    // ---- مانع معامله زیر حداقل 5 USDT ----
+    if (price * amount < 5) {
+        console.log(`❌ Trade rejected: total value < 5 USDT (value=${price * amount})`);
+        sendTelegram(`❌ Trade rejected: Below minimum 5 USDT (value=${price * amount})`);
+        return false;
+    }
+
     const payload = {
         type,
         execution: "limit",
@@ -85,31 +90,32 @@ async function placeOrder(type, price) {
         clientOrderId: String(Date.now())
     };
 
-    const data = await nobiPost(
-        "https://apiv2.nobitex.ir/market/orders/add",
-        payload
-    );
+    console.log("ORDER PAYLOAD:", payload);
+    sendTelegram(`ORDERING: ${type} | ${price} | amount=${amount}`);
 
-
+    const data = await nobiPost("https://apiv2.nobitex.ir/market/orders/add", payload);
 
     if (data.status === "failed") {
         console.log("ORDER FAIL:", data);
-        sendTelegram(`ORDER FAIL: ${data.message} ${data.code}`)
-
+        sendTelegram(`ORDER FAIL: ${data.message}`);
         return false;
     }
 
     writeTradeLog(type, price, amount);
-
-    // -------------------------
-    // UPDATE lastPriceStored
-    // -------------------------
-    lastPriceStored = price;
-    saveState();
-
-    sendTelegram(`ORDER OK: ${type} ${price} ${amount}`)
-
+    sendTelegram(`ORDER OK: ${type} ${price} amount=${amount}`);
     return true;
+}
+
+
+// GET BALANCE
+async function getBalance(cur) {
+    const data = await nobiPost(
+        "https://apiv2.nobitex.ir/users/wallets/balance",
+        { currency: cur }
+    );
+
+    if (data.status !== "ok") return 0;
+    return parseFloat(data.balance);
 }
 
 async function getOrderBook() {
@@ -148,27 +154,44 @@ async function logicLoop() {
         }
     }
 
-    // SELL (target profit or trend break)
     if (analysis.signal === 'sell') {
 
         if (data.lastPrice === 0) {
             console.log("Sell signal received but lastPrice is 0. Ignoring.");
             sendTelegram("Sell signal received but no active position found.");
+            return;
         }
 
         const target = profitTarget(data.lastPrice);
 
         if (bestBuy >= target) {
-            const place = await placeOrder('sell', bestBuy);
+            const balanceBTC = await getBalance("btc");
+
+            if (balanceBTC <= 0) {
+                sendTelegram("❌ SELL FAILED: No BTC balance");
+                console.log("No BTC balance to sell.");
+                return;
+            }
+
+            // کنترل حداقل معامله 5 تتر
+            if (balanceBTC * bestBuy < 5) {
+                sendTelegram("❌ SELL BLOCKED: Value < 5 USDT (minimum trade)");
+                console.log("Trade rejected: value < 5 USDT");
+                return;
+            }
+
+            const place = await placeOrder('sell', bestBuy, balanceBTC);
+
             if (place) {
-                sendTelegram(`Sell executed with +1% profit at price: ${bestBuy}`);
-                console.log(`Sell executed with +1% profit at price: ${bestBuy}`);
+                sendTelegram(`Sell executed at ${bestBuy} | amount=${balanceBTC}`);
+                console.log(`Sell executed at ${bestBuy}`);
                 data.lastPrice = 0;
                 data.buys = 0;
             }
+
         } else {
-            sendTelegram(`Sell signal detected, but price has not reached 1% target. Current: ${bestBuy}, Target: ${target}`);
-            console.log(`Sell signal detected, but target not reached. Current: ${bestBuy}, Target: ${target}`);
+            console.log(`Sell signal detected, but price < target. Now=${bestBuy}, Target=${target}`);
+            sendTelegram(`Sell signal detected, but price < target`);
         }
     }
 
