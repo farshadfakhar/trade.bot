@@ -178,7 +178,7 @@ async function logicLoop() {
 }
 
 // Loop every 5 seconds
-setInterval(logicLoop, 5000);
+setInterval(logicLoop, 2000);
 
 sendTelegram("BTC/USDT bot is now running with new FSM and full candle analysis...");
 console.log("Bot started: BTC/USDT FSM + 5m candle analysis active.");
