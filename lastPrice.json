@@ -1,1 +1,6 @@
-{"STATE":"REVERSAL","buys":1,"last3":[90259.98999999999,90259.98999999999,90259.98999999999],"lastPriceStored":null}
+{
+  "lastPrice": 0,
+  "state": "DOWN",
+  "buys": 0,
+  "logs": []
+}
