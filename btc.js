@@ -5,7 +5,7 @@ require("dotenv").config();
 
 const SYMBOL = "BTCUSDT";
 
-const TRADE_USDT = "5"; // IN $
+const TRADE_USDT = "6"; // IN $
 var TRADE_AMOUNT = 0; // IN $
 const TAKE_PROFIT_PERCENT = 1;
 
