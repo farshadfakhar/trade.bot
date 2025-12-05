@@ -171,7 +171,7 @@ async function logicLoop() {
 
         const target = profitTarget(data.lastPrice);
 
-        if (bestBuy >= target) {
+        // if (bestBuy >= target) {
             const balanceBTC = await getBalance("btc");
 
             if (balanceBTC <= 0) {
@@ -196,11 +196,11 @@ async function logicLoop() {
                 data.buys = 0;
             }
 
-        } else {
-            console.log(`Sell signal detected, but price < target. Now=${bestBuy}, Target=${target}`);
-            sendTelegram(`Sell signal detected, but price < target`);
-            data.state = 'HOLD'
-        }
+        // } else {
+        //     console.log(`Sell signal detected, but price < target. Now=${bestBuy}, Target=${target}`);
+        //     sendTelegram(`Sell signal detected, but price < target`);
+        //     data.state = 'HOLD'
+        // }
     }
 
     // Update bot state
